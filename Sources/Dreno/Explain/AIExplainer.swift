@@ -22,14 +22,61 @@ enum AIExplainer {
     }
 
     enum AIError: Error, LocalizedError {
-        case notConfigured, http(Int, String), format(String)
+        case notConfigured, http(Int, String), format(String), webSearchUnavailable
         var errorDescription: String? {
             switch self {
-            case .notConfigured: return "IA não configurada. Preencha AI_BASE_URL, AI_MODEL e AI_API_KEY no .env."
+            case .notConfigured: return "IA não configurada. Preencha endereço, modelo e chave nos Ajustes."
             case .http(let c, let b): return "A IA respondeu HTTP \(c): \(b)"
             case .format(let m): return "Resposta da IA em formato inesperado: \(m)"
+            case .webSearchUnavailable: return "A busca na web não está ativa na sua conta do provedor."
             }
         }
+    }
+
+    /// Busca na web feita pelo próprio provedor (ferramenta web_search), se o usuário ligar.
+    static var webSearchEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "aiWebSearch") || Env.load()["AI_WEB_SEARCH"] == "1"
+    }
+
+    struct ChatReply {
+        let content: String
+        let toolCalls: [[String: Any]]
+        let annotations: [[String: Any]]
+    }
+
+    /// Chamada com ferramentas (function calling) e busca na web opcional.
+    static func chat(messages: [[String: Any]], tools: [[String: Any]], webSearch: Bool, toolChoice: String = "auto",
+                     maxTokens: Int, timeout: TimeInterval) async throws -> ChatReply {
+        guard let cfg = config() else { throw AIError.notConfigured }
+        var req = URLRequest(url: cfg.baseURL.appendingPathComponent("chat/completions"))
+        req.httpMethod = "POST"
+        req.timeoutInterval = timeout
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bearer \(cfg.apiKey)", forHTTPHeaderField: "Authorization")
+        var body: [String: Any] = ["model": cfg.model, "temperature": 0.2, "max_tokens": maxTokens, "messages": messages]
+        var allTools = tools
+        // Cada palavra-chave buscada conta como uma chamada paga no provedor, por isso o limite baixo.
+        if webSearch { allTools.append(["type": "web_search", "max_keyword": 2, "force_search": false, "limit": 3]) }
+        if !allTools.isEmpty {
+            body["tools"] = allTools
+            body["tool_choice"] = toolChoice
+        }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        let text = String(data: data, encoding: .utf8) ?? ""
+        guard (200..<300).contains(status) else {
+            if webSearch && text.localizedCaseInsensitiveContains("websearch") { throw AIError.webSearchUnavailable }
+            throw AIError.http(status, String(text.prefix(300)))
+        }
+        guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let choices = obj["choices"] as? [[String: Any]],
+              let msg = choices.first?["message"] as? [String: Any] else {
+            throw AIError.format(String(text.prefix(200)))
+        }
+        return ChatReply(content: (msg["content"] as? String) ?? "",
+                         toolCalls: (msg["tool_calls"] as? [[String: Any]]) ?? [],
+                         annotations: (msg["annotations"] as? [[String: Any]]) ?? [])
     }
 
     static func config() -> Config? {

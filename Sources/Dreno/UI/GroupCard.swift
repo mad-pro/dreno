@@ -10,10 +10,12 @@ struct GroupCard: View {
     let aiAvailable: Bool
     let onAskAI: (GroupStat) -> Void
 
+    @Environment(\.openWindow) private var openWindow
     @State private var expanded = false
     @State private var pendingKill: [Int32] = []
     @State private var confirmKill = false
     @State private var notRunning = false
+    @State private var investigating = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -40,6 +42,13 @@ struct GroupCard: View {
         }
         .alert("\(group.identity.displayName) não está rodando agora", isPresented: $notRunning) {
             Button("OK", role: .cancel) {}
+        }
+        .sheet(isPresented: $investigating) {
+            InvestigationSheet(group: group, report: report, explanation: explanation) { draft in
+                AssistantModel.shared.draft = draft
+                openWindow(id: "assistant")
+                NSApp.activate()
+            }
         }
     }
 
@@ -132,10 +141,16 @@ struct GroupCard: View {
                 .buttonStyle(.link)
             }
             if aiAvailable, let ex = explanation, ex.canAskAI {
-                Button(ex.source.hasPrefix("IA") ? "Perguntar de novo à IA" : "Explicar com IA") { onAskAI(group) }
+                Button(ex.source.hasPrefix("IA") ? "Refazer explicação" : "Explicar com IA") { onAskAI(group) }
                     .buttonStyle(.link)
             }
             Spacer()
+            if aiAvailable && !group.identity.isResidual {
+                Button { investigating = true } label: {
+                    Label("Investigar com IA", systemImage: "sparkle.magnifyingglass")
+                }
+                .controlSize(.small)
+            }
             if canTerminate {
                 Button(role: .destructive) {
                     pendingKill = Terminator.running(group.identity)

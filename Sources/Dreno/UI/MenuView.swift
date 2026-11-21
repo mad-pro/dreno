@@ -50,6 +50,14 @@ struct MenuView: View {
                 }
                 Spacer()
                 Button("Relatórios") { openReports() }
+                Button {
+                    openWindow(id: "assistant")
+                    NSApp.activate()
+                    dismiss()
+                } label: {
+                    Image(systemName: "bubble.left.and.text.bubble.right")
+                }
+                .help("Assistente")
             }
 
             Divider()

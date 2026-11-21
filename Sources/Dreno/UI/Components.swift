@@ -193,9 +193,9 @@ enum Terminator {
     }
 
     @discardableResult
-    static func terminate(_ id: GroupIdentity) -> Int {
+    static func terminate(_ id: GroupIdentity, graceful: Bool = true) -> Int {
         var count = 0
-        if id.isAppGroup, let app = id.appPath {
+        if graceful, id.isAppGroup, let app = id.appPath {
             for ra in NSWorkspace.shared.runningApplications where ra.bundleURL?.path == app {
                 if ra.terminate() { count += 1 }
             }

@@ -42,6 +42,12 @@ struct DrenoApp: App {
         }
         .defaultSize(width: 1180, height: 820)
         .defaultLaunchBehavior(Launch.showWindow ? .presented : .suppressed)
+
+        Window("Assistente do Dreno", id: "assistant") {
+            AssistantView()
+        }
+        .defaultSize(width: 760, height: 720)
+        .defaultLaunchBehavior(.suppressed)
     }
 }
 

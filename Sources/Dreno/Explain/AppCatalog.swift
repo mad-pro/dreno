@@ -155,6 +155,13 @@ final class AppCatalog {
         return job
     }
 
+    func plistPath(forLabel label: String) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        if launchIndex == nil { launchIndex = Self.buildIndex() }
+        return launchIndex?.values.first { $0.label == label && !$0.plist.isEmpty }?.plist
+    }
+
     private static func buildIndex() -> [String: LaunchJob] {
         let home = NSHomeDirectory()
         let dirs: [(String, String, Bool)] = [

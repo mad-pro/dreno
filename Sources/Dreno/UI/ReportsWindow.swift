@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ReportsWindow: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
     @State private var showSettings = false
 
     var body: some View {
@@ -30,6 +31,8 @@ struct ReportsWindow: View {
                     Button { model.start() } label: { Label("Gravar", systemImage: "record.circle") }
                         .help("Começar uma gravação")
                 }
+                Button { openWindow(id: "assistant") } label: { Label("Assistente", systemImage: "bubble.left.and.text.bubble.right") }
+                    .help("Peça em português pro assistente investigar ou executar algo no Mac")
                 Button { showSettings = true } label: { Label("Ajustes", systemImage: "gearshape") }
             }
         }

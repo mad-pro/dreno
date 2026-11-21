@@ -104,22 +104,23 @@ struct ReportView: View {
         }.value
         bundle = result
         loading = false
+        if let result { AssistantModel.shared.reportContext = AssistantContext.summary(result) }
         await autoAI()
     }
 
-    /// Pede à IA explicação dos grupos que não estão na base curada (fica em cache).
+    /// Com IA configurada, todo processo do relatório ganha a descrição do LLM (fica em cache, então só a primeira vez demora).
     private func autoAI() async {
         guard AIExplainer.isConfigured, let b = bundle else { return }
         let items = Array(b.report.displayedGroups.filter { g in
-            guard let ex = b.explanations[g.id] else { return false }
+            guard let ex = b.explanations[g.id], !g.identity.isResidual else { return false }
             return ex.canAskAI && !ex.source.hasPrefix("IA")
-        }.prefix(10))
+        }.prefix(40))
         guard !items.isEmpty else { return }
         var done = 0
-        aiStatus = "Pedindo explicações pra IA (0 de \(items.count))"
-        for start in stride(from: 0, to: items.count, by: 3) {
+        aiStatus = "Explicando processos com IA (0 de \(items.count))"
+        for start in stride(from: 0, to: items.count, by: 4) {
             if Task.isCancelled { break }
-            let chunk = Array(items[start..<min(start + 3, items.count)])
+            let chunk = Array(items[start..<min(start + 4, items.count)])
             await withTaskGroup(of: (String, Explanation?).self) { tg in
                 for g in chunk {
                     guard let base = b.explanations[g.id] else { continue }
@@ -128,7 +129,7 @@ struct ReportView: View {
                 for await (id, ex) in tg {
                     done += 1
                     if let ex { bundle?.explanations[id] = ex }
-                    aiStatus = "Pedindo explicações pra IA (\(done) de \(items.count))"
+                    aiStatus = "Explicando processos com IA (\(done) de \(items.count))"
                 }
             }
         }

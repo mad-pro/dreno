@@ -40,18 +40,19 @@ enum Explainer {
         let key = aiKey(id)
         let sig = id.path.map { AppCatalog.shared.signing($0) }
         let job = id.path.flatMap { AppCatalog.shared.launchJob(for: $0) }
+        let kb = matchKB(id)
         var ex: Explanation
-        if let e = matchKB(id) {
+        if let c = AIExplainer.cached(key) {
+            // A descrição vem da IA; a classificação de segurança fica com a base curada quando ela conhece o processo.
+            ex = Explanation(title: c.title.isEmpty ? id.displayName : c.title, what: c.what, why: c.why, fix: c.fix,
+                             kind: kb?.kind ?? c.kind, stop: kb?.stop ?? c.stop, source: "IA (\(c.model))", confidence: c.confidence)
+        } else if let e = kb {
             ex = Explanation(title: fill(e.title, id), what: fill(e.what, id), why: fill(e.why, id), fix: fill(e.fix, id),
                              kind: e.kind, stop: e.stop, source: "Base do Dreno")
-        } else if let c = AIExplainer.cached(key) {
-            ex = Explanation(title: c.title.isEmpty ? id.displayName : c.title, what: c.what, why: c.why, fix: c.fix,
-                             kind: c.kind, stop: c.stop, source: "IA (\(c.model))", confidence: c.confidence)
-            ex.canAskAI = true
         } else {
             ex = metadataExplanation(id, g, sig: sig, job: job)
-            ex.canAskAI = true
         }
+        ex.canAskAI = true
         ex.facts = facts
         ex.aiKey = key
         ex.stopCommand = job?.stopCommand
@@ -160,17 +161,17 @@ enum Explainer {
         if id.names.count > 1 { lines.append("Programas do grupo: \(id.names.prefix(8).joined(separator: ", "))") }
         for f in base.facts where f.label != "Comandos" { lines.append("\(f.label): \(f.value)") }
         if let man = AppCatalog.shared.manSummary(for: id.mainName) { lines.append("Manual do macOS: \(man)") }
-        var behavior = "CPU total \(Fmt.duration(g.cpuSec)) no período, média de \(Fmt.pct(g.avgPctAlive)) de um núcleo enquanto rodava, ativo \(Fmt.pct(g.activeRatio * 100)) do tempo, maior sequência contínua de \(Fmt.duration(g.longestStreakSec))"
-        if let m = g.memAvg { behavior += ", memória média \(Fmt.bytes(m))" }
-        if g.gpuSec > 1 { behavior += ", GPU \(Fmt.duration(g.gpuSec))" }
-        lines.append("Comportamento medido: \(behavior).")
+        if let kb = matchKB(id) {
+            lines.append("Descrição da base curada do app (confiável, use como ponto de partida e aprofunde): \(fill(kb.title, id)). O que é: \(fill(kb.what, id)) Por que consome: \(fill(kb.why, id)) O que fazer: \(fill(kb.fix, id))")
+        }
         return """
-        Explique este processo do macOS para o dono do Mac. Ele quer saber o que é, por que consome e se pode parar pra economizar bateria e CPU.
+        Explique este processo do macOS pro dono do Mac, que é desenvolvedor e quer decidir se pode parar ele pra economizar bateria e CPU. \
+        Explique de forma geral, sem citar números de uma medição específica, pra que a explicação sirva sempre que esse processo aparecer.
 
         \(lines.joined(separator: "\n"))
 
         Responda SOMENTE com um objeto JSON, sem texto antes ou depois, neste formato:
-        {"titulo": "nome curto e claro", "o_que_e": "2 a 4 frases sobre o que é e de onde vem", "por_que_consome": "1 a 3 frases sobre quando e por que gasta CPU, energia ou memória", "o_que_fazer": "passos práticos e seguros pra reduzir ou parar", "pode_encerrar": "sim | nao | reduzir | cuidado", "tipo": "sistema | sistema-ajustavel | app | dev | nuvem | seguranca | fundo", "confianca": "alta | media | baixa"}
+        {"titulo": "nome curto e claro", "o_que_e": "3 a 5 frases: o que é, de quem é, pra que serve e de onde vem", "por_que_consome": "2 a 3 frases sobre quando e por que ele costuma gastar CPU, energia ou memória", "o_que_fazer": "passos práticos e seguros pra reduzir ou parar, com o caminho certo nos Ajustes quando existir", "pode_encerrar": "sim | nao | reduzir | cuidado", "tipo": "sistema | sistema-ajustavel | app | dev | nuvem | seguranca | fundo", "confianca": "alta | media | baixa"}
         """
     }
 
@@ -181,8 +182,9 @@ enum Explainer {
         ex.what = entry.what
         ex.why = entry.why
         ex.fix = entry.fix
-        ex.kind = entry.kind
-        ex.stop = entry.stop
+        let kb = matchKB(g.identity)
+        ex.kind = kb?.kind ?? entry.kind
+        ex.stop = kb?.stop ?? entry.stop
         ex.source = "IA (\(entry.model))"
         ex.confidence = entry.confidence
         return ex
